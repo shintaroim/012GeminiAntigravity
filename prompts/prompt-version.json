@@ -1,0 +1,16 @@
+{
+  "version": "v1.0",
+  "updatedAt": "2026-10-12",
+  "description": "HON-NEo（ホンネヲ）出版 第1章｜話す30日 7 STORIES｜3 COMPASS 対話プロンプト（正本準拠）",
+  "modules": [
+    "system.md",
+    "philosophy.md",
+    "conversation-rules.md",
+    "phases/speak.md",
+    "phases/rest.md",
+    "phases/refine.md",
+    "phases/book-seed.md",
+    "output-formats.md",
+    "safety.md"
+  ]
+}
