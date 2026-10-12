@@ -6,11 +6,22 @@ export class GeminiAIProvider implements AIProvider {
   private model: string;
 
   constructor(apiKey?: string, model?: string) {
-    this.apiKey = apiKey || process.env.AI_API_KEY || "";
-    this.model = model || process.env.AI_MODEL || "gemini-2.5-flash";
+    this.apiKey =
+      apiKey ||
+      process.env.AI_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.NEXT_PUBLIC_AI_API_KEY ||
+      process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+      "";
+    this.model =
+      model ||
+      process.env.AI_MODEL ||
+      process.env.GEMINI_MODEL ||
+      "gemini-2.5-flash";
 
     if (!this.apiKey) {
-      throw new Error("Gemini APIキーが設定されていません。AI_API_KEY を確認してください。");
+      throw new Error("Gemini APIキーが設定されていません。VercelのEnvironment Variablesで AI_API_KEY を設定してください。");
     }
   }
 

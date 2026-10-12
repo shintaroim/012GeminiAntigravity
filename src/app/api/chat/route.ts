@@ -136,9 +136,11 @@ export async function POST(request: NextRequest) {
     const fullSystemPrompt = parts.join("\n\n");
 
     // 8. AIプロバイダー呼び出し
-    const provider = getAIProvider();
     let aiResponse;
+    let providerName = "unknown";
     try {
+      const provider = getAIProvider();
+      providerName = provider.name;
       aiResponse = await provider.generateResponse({
         systemPrompt: fullSystemPrompt,
         messages: aiMessages,
@@ -146,18 +148,19 @@ export async function POST(request: NextRequest) {
       });
     } catch (aiError) {
       console.error("AI Provider execution error:", aiError);
+      const errorMsg =
+        aiError instanceof Error ? aiError.message : "AIの応答生成中にエラーが発生しました。";
 
       await repo.createUsageEvent({
         sessionId,
         eventType: "error",
-        model: provider.name,
+        model: providerName,
         latencyMs: Date.now() - startTime,
       });
 
       return NextResponse.json(
         {
-          error:
-            "AIの応答生成中にエラーが発生しました。入力したメッセージは保存されています。再試行してください。",
+          error: `AIエラー: ${errorMsg}`,
         },
         { status: 502 }
       );
@@ -220,6 +223,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Chat API unhandled error:", error);
 
+    const detailMsg =
+      error instanceof Error ? error.message : "サーバー内部でエラーが発生しました。";
+
     await repo.createUsageEvent({
       eventType: "error",
       model: "unknown",
@@ -227,7 +233,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { error: "サーバー内部でエラーが発生しました。時間を置いて再試行してください。" },
+      { error: `サーバーエラー: ${detailMsg}` },
       { status: 500 }
     );
   }

@@ -8,14 +8,26 @@ function readPromptFile(relativePath: string): string {
   const cached = promptCache.get(relativePath);
   if (cached) return cached;
 
-  const fullPath = path.resolve(process.cwd(), "prompts", relativePath);
-  if (!fs.existsSync(fullPath)) {
-    throw new Error(`プロンプトファイルが見つかりません: ${relativePath}`);
+  const candidatePaths = [
+    path.resolve(process.cwd(), "prompts", relativePath),
+    path.resolve(process.cwd(), ".next", "server", "prompts", relativePath),
+    path.join(__dirname, "..", "..", "..", "prompts", relativePath),
+  ];
+
+  for (const fullPath of candidatePaths) {
+    try {
+      if (fs.existsSync(fullPath)) {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        promptCache.set(relativePath, content);
+        return content;
+      }
+    } catch {
+      // continue to next candidate
+    }
   }
 
-  const content = fs.readFileSync(fullPath, "utf-8");
-  promptCache.set(relativePath, content);
-  return content;
+  console.warn(`[PromptLoader] Prompt file not found: ${relativePath}, using built-in fallback`);
+  return `# HON-NEo ${relativePath}\n対話型人生編集者として1ターン1問で優しく寄り添い、本音を引き出してください。`;
 }
 
 export function clearPromptCache(): void {
