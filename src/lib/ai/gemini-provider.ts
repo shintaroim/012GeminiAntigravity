@@ -41,12 +41,14 @@ export class GeminiAIProvider implements AIProvider {
         const errorMsg = err instanceof Error ? err.message : String(err);
         lastError = err instanceof Error ? err : new Error(errorMsg);
 
-        // クォータ超過 または モデル利用不可（廃止・非対応）の場合、別の候補モデルで即時リトライ
+        // クォータ超過 または モデル利用不可（廃止） または 一時的混雑（high demand/503）の場合、別の候補モデルで即時リトライ
         const shouldFallback =
           errorMsg.includes("Quota exceeded") ||
           errorMsg.includes("exceeded your current quota") ||
           errorMsg.includes("429") ||
           errorMsg.includes("no longer available") ||
+          errorMsg.includes("high demand") ||
+          errorMsg.includes("503") ||
           errorMsg.includes("404");
 
         if (shouldFallback) {
@@ -87,15 +89,22 @@ export class GeminiAIProvider implements AIProvider {
       };
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    let response: Response | null = null;
+    let lastCallError: string = "";
 
-    if (!response.ok) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) {
+        break;
+      }
+
       const errorText = await response.text();
       let errorMsg = `Gemini API request failed (${response.status})`;
       try {
@@ -106,7 +115,20 @@ export class GeminiAIProvider implements AIProvider {
       } catch {
         // use fallback errorMsg
       }
+      lastCallError = errorMsg;
+
+      // 混雑エラーの場合は1.5秒待って再試行
+      if ((errorMsg.includes("high demand") || response.status === 503) && attempt === 0) {
+        console.warn(`[GeminiAIProvider] High demand detected for ${model}, retrying after 1.5s...`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+
       throw new Error(errorMsg);
+    }
+
+    if (!response || !response.ok) {
+      throw new Error(lastCallError || "Gemini API request failed");
     }
 
     const data = await response.json();
