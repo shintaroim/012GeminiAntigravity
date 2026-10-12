@@ -108,16 +108,21 @@ export default function ChatPage({ params }: ChatPageProps) {
 
     const token = getToken();
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 40000);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           sessionId,
           message: text,
           resumeToken: token || undefined,
         }),
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -131,9 +136,13 @@ export default function ChatPage({ params }: ChatPageProps) {
       setPhase(data.phase);
       setTurnCount(data.turnCount);
     } catch (err: unknown) {
+      clearTimeout(timeoutId);
       console.error(err);
+      const isTimeout = err instanceof Error && err.name === "AbortError";
       setError(
-        err instanceof Error
+        isTimeout
+          ? "AIの応答待機時間がタイムアウトしました。通信環境を確認し、再試行してください。"
+          : err instanceof Error
           ? err.message
           : "送信に失敗しました。再試行してください。"
       );

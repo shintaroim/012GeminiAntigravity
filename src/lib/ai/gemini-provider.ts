@@ -49,6 +49,9 @@ export class GeminiAIProvider implements AIProvider {
       generationConfig: {
         maxOutputTokens: request.maxTokens || 1500,
         temperature: request.temperature ?? 0.7,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
       },
     };
 
@@ -105,9 +108,18 @@ export class GeminiAIProvider implements AIProvider {
 
     const data = await response.json();
     const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
+    const rawParts: Array<{ thought?: boolean; text?: string }> =
+      candidate?.content?.parts || [];
+
+    // thought: true の思考パートを除外し、回答テキストのみを結合
+    const answerParts = rawParts.filter((p) => !p.thought && Boolean(p.text));
+    const text = (answerParts.length > 0 ? answerParts : rawParts)
+      .map((p) => p.text || "")
+      .join("")
+      .trim();
 
     if (!text) {
+      console.error("[GeminiAIProvider] Empty response structure:", JSON.stringify(candidate || data).slice(0, 300));
       throw new Error("Gemini APIからの応答が空でした。");
     }
 

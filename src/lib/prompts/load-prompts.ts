@@ -8,22 +8,17 @@ function readPromptFile(relativePath: string): string {
   const cached = promptCache.get(relativePath);
   if (cached) return cached;
 
-  const candidatePaths = [
-    path.resolve(process.cwd(), "prompts", relativePath),
-    path.resolve(process.cwd(), ".next", "server", "prompts", relativePath),
-    path.join(__dirname, "..", "..", "..", "prompts", relativePath),
-  ];
+  const promptDir = path.join(process.cwd(), "prompts");
+  const fullPath = path.join(promptDir, relativePath);
 
-  for (const fullPath of candidatePaths) {
-    try {
-      if (fs.existsSync(fullPath)) {
-        const content = fs.readFileSync(fullPath, "utf-8");
-        promptCache.set(relativePath, content);
-        return content;
-      }
-    } catch {
-      // continue to next candidate
+  try {
+    if (fs.existsSync(fullPath)) {
+      const content = fs.readFileSync(fullPath, "utf-8");
+      promptCache.set(relativePath, content);
+      return content;
     }
+  } catch {
+    // continue to fallback
   }
 
   console.warn(`[PromptLoader] Prompt file not found: ${relativePath}, using built-in fallback`);

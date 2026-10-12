@@ -22,6 +22,8 @@ const ChatRequestSchema = z.object({
   resumeToken: z.string().min(1, { message: "再開トークンが必要です。" }),
 });
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const repo = getRepository();
