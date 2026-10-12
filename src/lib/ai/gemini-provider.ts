@@ -14,11 +14,14 @@ export class GeminiAIProvider implements AIProvider {
       process.env.NEXT_PUBLIC_AI_API_KEY ||
       process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
       "";
-    this.primaryModel =
-      model ||
-      process.env.AI_MODEL ||
-      process.env.GEMINI_MODEL ||
-      "gemini-3.8-flash";
+
+    const envModel = process.env.AI_MODEL || process.env.GEMINI_MODEL || "";
+    // 2.5-flash(クォータ切れ) や 2.0-flash(廃止) の場合は推奨の 3.8-flash を強制適用
+    if (!envModel || envModel.includes("2.5") || envModel.includes("2.0")) {
+      this.primaryModel = model || "gemini-3.8-flash";
+    } else {
+      this.primaryModel = model || envModel;
+    }
 
     if (!this.apiKey) {
       throw new Error("Gemini APIキーが設定されていません。VercelのEnvironment Variablesで AI_API_KEY を設定してください。");
@@ -26,42 +29,8 @@ export class GeminiAIProvider implements AIProvider {
   }
 
   async generateResponse(request: AIRequest): Promise<AIResponse> {
-    // 試行するモデル候補（プライマリモデル → 3.8-flash → 2.5-flash）
-    const candidateModels = Array.from(
-      new Set([this.primaryModel, "gemini-3.8-flash", "gemini-2.5-flash"])
-    );
-
-    let lastError: Error | null = null;
-
-    for (const modelToTry of candidateModels) {
-      try {
-        console.log(`[GeminiAIProvider] Attempting request with model: ${modelToTry}`);
-        return await this.callGemini(modelToTry, request);
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        lastError = err instanceof Error ? err : new Error(errorMsg);
-
-        // クォータ超過 または モデル利用不可（廃止） または 一時的混雑（high demand/503）の場合、別の候補モデルで即時リトライ
-        const shouldFallback =
-          errorMsg.includes("Quota exceeded") ||
-          errorMsg.includes("exceeded your current quota") ||
-          errorMsg.includes("429") ||
-          errorMsg.includes("no longer available") ||
-          errorMsg.includes("high demand") ||
-          errorMsg.includes("503") ||
-          errorMsg.includes("404");
-
-        if (shouldFallback) {
-          console.warn(`[GeminiAIProvider] Model ${modelToTry} failed (${errorMsg.slice(0, 50)}...), trying fallback candidate...`);
-          continue;
-        }
-
-        // その他の致命的エラーはスロー
-        throw err;
-      }
-    }
-
-    throw lastError || new Error("Gemini APIでの応答生成に失敗しました。");
+    console.log(`[GeminiAIProvider] Using active model: ${this.primaryModel}`);
+    return await this.callGemini(this.primaryModel, request);
   }
 
   private async callGemini(model: string, request: AIRequest): Promise<AIResponse> {
@@ -92,7 +61,8 @@ export class GeminiAIProvider implements AIProvider {
     let response: Response | null = null;
     let lastCallError: string = "";
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // 混雑時（high demand）や一時エラー（503）に備えて最大3回リトライ
+    for (let attempt = 0; attempt < 3; attempt++) {
       response = await fetch(url, {
         method: "POST",
         headers: {
@@ -117,10 +87,12 @@ export class GeminiAIProvider implements AIProvider {
       }
       lastCallError = errorMsg;
 
-      // 混雑エラーの場合は1.5秒待って再試行
-      if ((errorMsg.includes("high demand") || response.status === 503) && attempt === 0) {
-        console.warn(`[GeminiAIProvider] High demand detected for ${model}, retrying after 1.5s...`);
-        await new Promise((r) => setTimeout(r, 1500));
+      // 混雑（high demand）や 503 の場合は 1.5秒〜3秒 待機して自動リトライ
+      const isTemporary = errorMsg.includes("high demand") || response.status === 503;
+      if (isTemporary && attempt < 2) {
+        const waitMs = (attempt + 1) * 1500;
+        console.warn(`[GeminiAIProvider] High demand on ${model}, retrying in ${waitMs}ms (attempt ${attempt + 1})...`);
+        await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
 
