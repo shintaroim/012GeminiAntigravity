@@ -7,7 +7,7 @@ export class GeminiAIProvider implements AIProvider {
 
   constructor(apiKey?: string, model?: string) {
     this.apiKey = apiKey || process.env.AI_API_KEY || "";
-    this.model = model || process.env.AI_MODEL || "gemini-1.5-flash";
+    this.model = model || process.env.AI_MODEL || "gemini-2.5-flash";
 
     if (!this.apiKey) {
       throw new Error("Gemini APIキーが設定されていません。AI_API_KEY を確認してください。");
