@@ -18,7 +18,7 @@ export class GeminiAIProvider implements AIProvider {
       model ||
       process.env.AI_MODEL ||
       process.env.GEMINI_MODEL ||
-      "gemini-2.0-flash";
+      "gemini-3.8-flash";
 
     if (!this.apiKey) {
       throw new Error("Gemini APIキーが設定されていません。VercelのEnvironment Variablesで AI_API_KEY を設定してください。");
@@ -26,9 +26,9 @@ export class GeminiAIProvider implements AIProvider {
   }
 
   async generateResponse(request: AIRequest): Promise<AIResponse> {
-    // 試行するモデル候補（プライマリモデル → 2.0-flash → 2.5-flash）
+    // 試行するモデル候補（プライマリモデル → 3.8-flash → 2.5-flash）
     const candidateModels = Array.from(
-      new Set([this.primaryModel, "gemini-2.0-flash", "gemini-2.5-flash"])
+      new Set([this.primaryModel, "gemini-3.8-flash", "gemini-2.5-flash"])
     );
 
     let lastError: Error | null = null;
@@ -41,18 +41,20 @@ export class GeminiAIProvider implements AIProvider {
         const errorMsg = err instanceof Error ? err.message : String(err);
         lastError = err instanceof Error ? err : new Error(errorMsg);
 
-        // クォータ超過（Quota exceeded / 429）の場合、別の候補モデルで即時リトライ
-        const isQuotaError =
+        // クォータ超過 または モデル利用不可（廃止・非対応）の場合、別の候補モデルで即時リトライ
+        const shouldFallback =
           errorMsg.includes("Quota exceeded") ||
           errorMsg.includes("exceeded your current quota") ||
-          errorMsg.includes("429");
+          errorMsg.includes("429") ||
+          errorMsg.includes("no longer available") ||
+          errorMsg.includes("404");
 
-        if (isQuotaError) {
-          console.warn(`[GeminiAIProvider] Model ${modelToTry} quota exceeded, falling back to next candidate...`);
+        if (shouldFallback) {
+          console.warn(`[GeminiAIProvider] Model ${modelToTry} failed (${errorMsg.slice(0, 50)}...), trying fallback candidate...`);
           continue;
         }
 
-        // クォータ以外の致命的エラーはそのままスロー
+        // その他の致命的エラーはスロー
         throw err;
       }
     }
