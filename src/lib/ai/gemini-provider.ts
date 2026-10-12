@@ -3,7 +3,7 @@ import { AIProvider, AIRequest, AIResponse } from "./provider";
 export class GeminiAIProvider implements AIProvider {
   public name = "gemini";
   private apiKey: string;
-  private model: string;
+  private primaryModel: string;
 
   constructor(apiKey?: string, model?: string) {
     this.apiKey =
@@ -14,11 +14,11 @@ export class GeminiAIProvider implements AIProvider {
       process.env.NEXT_PUBLIC_AI_API_KEY ||
       process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
       "";
-    this.model =
+    this.primaryModel =
       model ||
       process.env.AI_MODEL ||
       process.env.GEMINI_MODEL ||
-      "gemini-2.5-flash";
+      "gemini-2.0-flash";
 
     if (!this.apiKey) {
       throw new Error("Gemini APIキーが設定されていません。VercelのEnvironment Variablesで AI_API_KEY を設定してください。");
@@ -26,7 +26,42 @@ export class GeminiAIProvider implements AIProvider {
   }
 
   async generateResponse(request: AIRequest): Promise<AIResponse> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    // 試行するモデル候補（プライマリモデル → 2.0-flash → 2.5-flash）
+    const candidateModels = Array.from(
+      new Set([this.primaryModel, "gemini-2.0-flash", "gemini-2.5-flash"])
+    );
+
+    let lastError: Error | null = null;
+
+    for (const modelToTry of candidateModels) {
+      try {
+        console.log(`[GeminiAIProvider] Attempting request with model: ${modelToTry}`);
+        return await this.callGemini(modelToTry, request);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        lastError = err instanceof Error ? err : new Error(errorMsg);
+
+        // クォータ超過（Quota exceeded / 429）の場合、別の候補モデルで即時リトライ
+        const isQuotaError =
+          errorMsg.includes("Quota exceeded") ||
+          errorMsg.includes("exceeded your current quota") ||
+          errorMsg.includes("429");
+
+        if (isQuotaError) {
+          console.warn(`[GeminiAIProvider] Model ${modelToTry} quota exceeded, falling back to next candidate...`);
+          continue;
+        }
+
+        // クォータ以外の致命的エラーはそのままスロー
+        throw err;
+      }
+    }
+
+    throw lastError || new Error("Gemini APIでの応答生成に失敗しました。");
+  }
+
+  private async callGemini(model: string, request: AIRequest): Promise<AIResponse> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`;
 
     // Gemini API用のcontents形式に変換
     const contents = request.messages
@@ -85,7 +120,7 @@ export class GeminiAIProvider implements AIProvider {
 
     return {
       content: text,
-      model: this.model,
+      model,
       inputTokens,
       outputTokens,
     };
