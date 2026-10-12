@@ -167,7 +167,13 @@ export class SupabaseRepository implements SessionRepository {
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
+      console.error("[Supabase] getSessionById error:", error.message, error.details || "", error.hint || "");
+      return null;
+    }
+
+    if (!data) {
+      console.warn("[Supabase] getSessionById not found:", sessionId);
       return null;
     }
 

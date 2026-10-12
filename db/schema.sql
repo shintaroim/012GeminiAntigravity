@@ -51,3 +51,11 @@ CREATE TABLE IF NOT EXISTS usage_events (
 -- usage_events インデックス
 CREATE INDEX IF NOT EXISTS idx_usage_events_session_id ON usage_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_usage_events_created_at ON usage_events(created_at);
+
+-- 4. Row Level Security (RLS) 設定
+-- 本アプリはNext.js Route Handler（サーバー側）で安全に認証を行ってアクセスするため、
+-- SupabaseのRLSを無効化（または全許可）にしてanonキー・service_roleキーの双方で安定動作させます。
+ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_events DISABLE ROW LEVEL SECURITY;
+

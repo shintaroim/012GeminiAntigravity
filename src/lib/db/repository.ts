@@ -301,17 +301,25 @@ export function getRepository(): SessionRepository {
   }
 
   const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_KEY;
 
   if (supabaseUrl && supabaseKey) {
+    console.log("[DB] Using SupabaseRepository. Target URL:", supabaseUrl.slice(0, 15) + "...");
     defaultRepo = new SupabaseRepository(supabaseUrl, supabaseKey);
     return defaultRepo;
   }
 
+  console.warn(
+    "[DB] WARNING: Supabase is not configured (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing). Falling back to JsonFileRepository (Ephemeral in serverless!)."
+  );
   defaultRepo = new JsonFileRepository();
   return defaultRepo;
 }
