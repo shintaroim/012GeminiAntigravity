@@ -9,6 +9,7 @@ import {
   UsageEventType,
 } from "@/types";
 import { createInitialState } from "@/lib/state/session-state";
+import { SupabaseRepository } from "./supabase-repository";
 
 export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -44,7 +45,25 @@ export interface DatabaseState {
   usageEvents: UsageEventRecord[];
 }
 
-export class JsonFileRepository {
+export interface SessionRepository {
+  createSession(
+    params?: CreateSessionParams
+  ): Promise<{ session: SessionRecord; resumeToken: string }>;
+  getSessionById(sessionId: string): Promise<SessionRecord | null>;
+  verifySessionToken(sessionId: string, rawToken: string): Promise<boolean>;
+  updateSession(
+    sessionId: string,
+    updates: Partial<Pick<SessionRecord, "phase" | "stateJson" | "promptVersion">>
+  ): Promise<SessionRecord | null>;
+  softDeleteSession(sessionId: string, rawToken: string): Promise<boolean>;
+  createMessage(params: CreateMessageParams): Promise<MessageRecord | null>;
+  getMessagesBySessionId(sessionId: string): Promise<MessageRecord[]>;
+  getTurnCount(sessionId: string): Promise<number>;
+  createUsageEvent(params: CreateUsageEventParams): Promise<UsageEventRecord>;
+  getUsageEventsBySessionId(sessionId: string): Promise<UsageEventRecord[]>;
+}
+
+export class JsonFileRepository implements SessionRepository {
   private filePath: string;
   private state: DatabaseState;
   private isPersisted: boolean;
@@ -274,11 +293,29 @@ export class JsonFileRepository {
 }
 
 // デフォルトのリポジトリシングルトンインスタンス
-let defaultRepo: JsonFileRepository | null = null;
+let defaultRepo: SessionRepository | null = null;
 
-export function getRepository(): JsonFileRepository {
-  if (!defaultRepo) {
-    defaultRepo = new JsonFileRepository();
+export function getRepository(): SessionRepository {
+  if (defaultRepo) {
+    return defaultRepo;
   }
+
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (supabaseUrl && supabaseKey) {
+    defaultRepo = new SupabaseRepository(supabaseUrl, supabaseKey);
+    return defaultRepo;
+  }
+
+  defaultRepo = new JsonFileRepository();
   return defaultRepo;
+}
+
+export function setRepositoryForTesting(repo: SessionRepository | null): void {
+  defaultRepo = repo;
 }
