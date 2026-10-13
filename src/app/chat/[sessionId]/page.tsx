@@ -8,6 +8,7 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { ErrorBanner } from "@/components/chat/ErrorBanner";
 import { ExportModal } from "@/components/chat/ExportModal";
 import { ChatMessage, ProgramPhase } from "@/types";
+import { useSpeechSynthesis } from "@/lib/speech/useSpeechSynthesis";
 
 interface ChatPageProps {
   params: Promise<{ sessionId: string }>;
@@ -25,6 +26,26 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
+  const [isVoiceMode, setIsVoiceMode] = useState<boolean>(false);
+
+  const {
+    isSupported,
+    isSpeaking,
+    speakingId,
+    speak,
+    cancel,
+  } = useSpeechSynthesis();
+
+  // 音声モードのトグル（常に初期状態はOFF。ユーザーがクリックしたときのみON/OFF切り替え）
+  const handleToggleVoiceMode = () => {
+    setIsVoiceMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        cancel();
+      }
+      return next;
+    });
+  };
 
   const getToken = (): string | null => {
     if (typeof window === "undefined") return null;
@@ -90,6 +111,9 @@ export default function ChatPage({ params }: ChatPageProps) {
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
 
+    // 新規発言時は進行中の読み上げを中断
+    cancel();
+
     setError(null);
     setLastFailedMessage(null);
     setIsLoading(true);
@@ -135,6 +159,11 @@ export default function ChatPage({ params }: ChatPageProps) {
       setMessages((prev) => [...prev, data.message]);
       setPhase(data.phase);
       setTurnCount(data.turnCount);
+
+      // 音声モードがONの場合は自動読み上げを開始
+      if (isVoiceMode && data.message?.content) {
+        speak(data.message.content, data.message.id);
+      }
     } catch (err: unknown) {
       clearTimeout(timeoutId);
       console.error(err);
@@ -199,6 +228,11 @@ export default function ChatPage({ params }: ChatPageProps) {
         turnCount={turnCount}
         onDeleteSession={handleDeleteSession}
         onOpenExport={() => setIsExportOpen(true)}
+        isVoiceMode={isVoiceMode}
+        isSpeaking={isSpeaking}
+        isVoiceSupported={isSupported}
+        onToggleVoiceMode={handleToggleVoiceMode}
+        onStopSpeaking={cancel}
       />
 
       {error && (
@@ -218,6 +252,9 @@ export default function ChatPage({ params }: ChatPageProps) {
           messages={messages}
           isLoading={isLoading}
           onQuickStart={() => handleSendMessage("ほんね")}
+          speakingId={speakingId}
+          onSpeak={(content, id) => speak(content, id)}
+          onStopSpeaking={cancel}
         />
       )}
 

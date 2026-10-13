@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, Mic, MicOff } from "lucide-react";
+import { useSpeechRecognition } from "@/lib/speech/useSpeechRecognition";
 
 interface ChatInputProps {
   onSendMessage: (text: string) => void;
@@ -26,6 +27,22 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const maxChars = 2000;
 
+  const {
+    isSupported: isSpeechSupported,
+    isListening,
+    startListening,
+    stopListening,
+    errorMessage: speechError,
+  } = useSpeechRecognition({
+    onResult: (spokenText) => {
+      setText((prev) => {
+        const trimmed = prev.trim();
+        const next = trimmed ? `${trimmed} ${spokenText}` : spokenText;
+        return next.slice(0, maxChars);
+      });
+    },
+  });
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -38,6 +55,8 @@ export function ChatInput({
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isListening) stopListening();
+
     const trimmed = text.trim();
     if (!trimmed || isLoading || disabled) return;
 
@@ -104,6 +123,23 @@ export function ChatInput({
             )}
           </div>
 
+          {/* 音声入力（マイク）ボタン */}
+          {isSpeechSupported && (
+            <button
+              type="button"
+              onClick={isListening ? stopListening : startListening}
+              disabled={isLoading || disabled}
+              className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-all border ${
+                isListening
+                  ? "bg-red-500 border-red-600 text-white animate-pulse shadow-md"
+                  : "bg-brand-50 border-brand-200/90 text-brand-700 hover:bg-brand-100 hover:text-brand-900"
+              } disabled:opacity-40`}
+              title={isListening ? "音声入力を停止" : "音声で話しかける（マイク入力）"}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          )}
+
           <button
             type="submit"
             disabled={!text.trim() || isLoading || disabled}
@@ -113,6 +149,17 @@ export function ChatInput({
             <Send className="w-4 h-4" />
           </button>
         </form>
+
+        {isListening && (
+          <div className="flex items-center justify-center gap-1.5 text-xs text-red-600 font-medium animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+            声を聞き取っています...話し終えたら送信またはマイクをタップしてください
+          </div>
+        )}
+
+        {speechError && (
+          <p className="text-[11px] text-center text-red-500">{speechError}</p>
+        )}
 
         <p className="text-[10px] text-center text-brand-500">
           Shift + Enter で改行。個人情報（実名・住所等）の入力は不要です。

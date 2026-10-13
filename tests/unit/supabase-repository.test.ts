@@ -5,13 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 describe("SupabaseRepository", () => {
   it("should create session and save hash of resumeToken", async () => {
-    let insertedData: any = null;
+    let insertedData: Record<string, unknown> | null = null;
 
     const mockClient = {
       from: vi.fn().mockImplementation((table: string) => {
         if (table === "sessions") {
           return {
-            insert: vi.fn().mockImplementation((data: any) => {
+            insert: vi.fn().mockImplementation((data: Record<string, unknown>) => {
               insertedData = data;
               return {
                 select: vi.fn().mockReturnValue({
@@ -48,8 +48,8 @@ describe("SupabaseRepository", () => {
     expect(session.id).toBeDefined();
     expect(session.phase).toBe("speak");
     expect(session.resumeTokenHash).toBe(hashToken(resumeToken));
-    expect(insertedData.resume_token_hash).toBe(hashToken(resumeToken));
-    expect(insertedData.deleted_at).toBeNull();
+    expect(insertedData!.resume_token_hash).toBe(hashToken(resumeToken));
+    expect(insertedData!.deleted_at).toBeNull();
   });
 
   it("should verify session token correctly", async () => {
@@ -96,7 +96,7 @@ describe("SupabaseRepository", () => {
   });
 
   it("should create message and count existing sequence number", async () => {
-    let insertedMessage: any = null;
+    let insertedMessage: Record<string, unknown> | null = null;
 
     const mockClient = {
       from: vi.fn().mockImplementation((table: string) => {
@@ -135,7 +135,7 @@ describe("SupabaseRepository", () => {
                 error: null,
               }),
             }),
-            insert: vi.fn().mockImplementation((data: any) => {
+            insert: vi.fn().mockImplementation((data: Record<string, unknown>) => {
               insertedMessage = data;
               return {
                 select: vi.fn().mockReturnValue({
@@ -161,7 +161,7 @@ describe("SupabaseRepository", () => {
 
     expect(msg).not.toBeNull();
     expect(msg?.sequenceNo).toBe(4); // 3 + 1 = 4
-    expect(insertedMessage.sequence_no).toBe(4);
-    expect(insertedMessage.content).toBe("こんにちは");
+    expect(insertedMessage!.sequence_no).toBe(4);
+    expect(insertedMessage!.content).toBe("こんにちは");
   });
 });

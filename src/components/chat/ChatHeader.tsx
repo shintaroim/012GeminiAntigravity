@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { ArrowLeft, Trash2, Shield, Info, Download } from "lucide-react";
 import { ProgramPhase } from "@/types";
+import { VoiceModeToggle } from "./VoiceModeToggle";
 
 interface ChatHeaderProps {
   sessionId: string;
@@ -10,6 +11,11 @@ interface ChatHeaderProps {
   turnCount: number;
   onDeleteSession?: () => void;
   onOpenExport?: () => void;
+  isVoiceMode?: boolean;
+  isSpeaking?: boolean;
+  isVoiceSupported?: boolean;
+  onToggleVoiceMode?: () => void;
+  onStopSpeaking?: () => void;
 }
 
 const PHASE_LABELS: Record<ProgramPhase, { title: string; desc: string }> = {
@@ -25,6 +31,11 @@ export function ChatHeader({
   turnCount,
   onDeleteSession,
   onOpenExport,
+  isVoiceMode = false,
+  isSpeaking = false,
+  isVoiceSupported = true,
+  onToggleVoiceMode,
+  onStopSpeaking,
 }: ChatHeaderProps) {
   const [showInfo, setShowInfo] = useState(false);
   const phaseInfo = PHASE_LABELS[phase] || PHASE_LABELS.speak;
@@ -53,6 +64,16 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center gap-1.5">
+        {onToggleVoiceMode && (
+          <VoiceModeToggle
+            enabled={isVoiceMode}
+            isSpeaking={isSpeaking}
+            isSupported={isVoiceSupported}
+            onToggle={onToggleVoiceMode}
+            onStopSpeaking={onStopSpeaking || (() => {})}
+          />
+        )}
+
         {onOpenExport && (
           <button
             onClick={onOpenExport}

@@ -2,18 +2,24 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { ChatMessage } from "@/types";
-import { Feather, User, Copy, Check } from "lucide-react";
+import { Feather, User, Copy, Check, Volume2, Square } from "lucide-react";
 
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
   onQuickStart?: () => void;
+  speakingId?: string | null;
+  onSpeak?: (text: string, id: string) => void;
+  onStopSpeaking?: () => void;
 }
 
 export function MessageList({
   messages,
   isLoading,
   onQuickStart,
+  speakingId,
+  onSpeak,
+  onStopSpeaking,
 }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -80,35 +86,84 @@ export function MessageList({
             </div>
 
             {/* 本文吹き出し */}
-            <div
-              className={`relative group max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                isUser
-                  ? "bg-brand-900 text-brand-50 rounded-tr-none shadow-sm"
-                  : "bg-white text-brand-950 border border-brand-200/90 rounded-tl-none shadow-sm font-sans"
-              }`}
-            >
-              {msg.content}
-
-              {!isUser && (
-                <button
-                  onClick={() => handleCopy(msg.id, msg.content)}
-                  className="absolute top-2 right-2 p-1 rounded-md bg-brand-50 hover:bg-brand-100 text-brand-600 hover:text-brand-900 transition-opacity opacity-70 group-hover:opacity-100 text-[10px] flex items-center gap-1 shadow-xs"
-                  title="メッセージをコピー"
+            {(() => {
+              const isCurrentSpeaking = speakingId === msg.id;
+              return (
+                <div
+                  className={`relative group max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed transition-all ${
+                    isUser
+                      ? "bg-brand-900 text-brand-50 rounded-tr-none shadow-sm whitespace-pre-wrap"
+                      : isCurrentSpeaking
+                      ? "bg-amber-50/40 text-brand-950 border border-amber-300 ring-2 ring-amber-200/60 rounded-tl-none shadow-md font-sans"
+                      : "bg-white text-brand-950 border border-brand-200/90 rounded-tl-none shadow-sm font-sans"
+                  }`}
                 >
-                  {copiedId === msg.id ? (
-                    <>
-                      <Check className="w-3 h-3 text-green-700" />
-                      <span className="text-green-700 font-medium">済</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span className="hidden sm:inline">コピー</span>
-                    </>
+                  {/* 本文 */}
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
+
+                  {/* AIメッセージのアクションバー（本文下部に配置し重なりを解消） */}
+                  {!isUser && (
+                    <div className="flex items-center justify-end gap-1.5 pt-2 mt-2 border-t border-brand-100/70 text-xs text-brand-600">
+                      {/* 読み上げ / 停止ボタン */}
+                      {onSpeak && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isCurrentSpeaking) {
+                              onStopSpeaking?.();
+                            } else {
+                              onSpeak(msg.content, msg.id);
+                            }
+                          }}
+                          className={`px-2 py-1 rounded-md text-[11px] flex items-center gap-1 transition-colors ${
+                            isCurrentSpeaking
+                              ? "bg-amber-200 text-amber-900 font-semibold shadow-xs"
+                              : "hover:bg-brand-100 text-brand-600 hover:text-brand-900"
+                          }`}
+                          title={
+                            isCurrentSpeaking
+                              ? "読み上げを停止"
+                              : "このメッセージを読み上げ"
+                          }
+                        >
+                          {isCurrentSpeaking ? (
+                            <>
+                              <Square className="w-3 h-3 fill-current text-amber-800 animate-pulse" />
+                              <span>停止</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 className="w-3.5 h-3.5" />
+                              <span>再生</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+
+                      {/* コピーボタン */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(msg.id, msg.content)}
+                        className="px-2 py-1 rounded-md text-[11px] flex items-center gap-1 hover:bg-brand-100 text-brand-600 hover:text-brand-900 transition-colors"
+                        title="メッセージをコピー"
+                      >
+                        {copiedId === msg.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-green-700" />
+                            <span className="text-green-700 font-medium">コピー済</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>コピー</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   )}
-                </button>
-              )}
-            </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })}
