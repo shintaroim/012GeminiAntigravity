@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Mic, MicOff } from "lucide-react";
-import { useSpeechRecognition } from "@/lib/speech/useSpeechRecognition";
+import { useSpeechRecognition, combineBaseAndSpeechText } from "@/lib/speech/useSpeechRecognition";
 
 interface ChatInputProps {
   onSendMessage: (text: string) => void;
@@ -36,40 +36,29 @@ export function ChatInput({
     interimTranscript,
     startListening,
     stopListening,
+    resetTranscript,
     errorMessage: speechError,
   } = useSpeechRecognition();
 
-  // 音声認識中：ベーステキスト + 認識テキスト（確定分＋未確定分）を安全に合成（重複を完全に防止）
+  // 音声認識のテキスト反映：ベーステキスト + 音声テキスト（確定分＋未確定分）を安全に結合
+  // isListeningの状態遷移に依存せず、最新の認識結果が確実にテキストエリアへ反映される
   useEffect(() => {
-    if (!isListening) return;
-
     const speechPart = [transcript, interimTranscript].filter(Boolean).join("");
     if (!speechPart) return;
 
-    const base = baseTextRef.current;
-    let combined = "";
-    if (base) {
-      const needsSeparator = !/[\s、。!?！？]$/.test(base);
-      combined = `${base}${needsSeparator ? " " : ""}${speechPart}`;
-    } else {
-      combined = speechPart;
-    }
-
-    setText(combined.slice(0, maxChars));
-  }, [transcript, interimTranscript, isListening, maxChars]);
-
-  // 音声入力終了時にベーステキストをクリア
-  useEffect(() => {
-    if (!isListening) {
-      baseTextRef.current = "";
-    }
-  }, [isListening]);
+    const nextText = combineBaseAndSpeechText(
+      baseTextRef.current,
+      speechPart,
+      maxChars
+    );
+    setText(nextText);
+  }, [transcript, interimTranscript, maxChars]);
 
   const handleToggleSpeech = async () => {
     if (isListening) {
       stopListening();
     } else {
-      baseTextRef.current = text.trim();
+      baseTextRef.current = text;
       await startListening();
     }
   };
@@ -93,6 +82,8 @@ export function ChatInput({
 
     onSendMessage(trimmed);
     setText("");
+    baseTextRef.current = "";
+    resetTranscript();
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }

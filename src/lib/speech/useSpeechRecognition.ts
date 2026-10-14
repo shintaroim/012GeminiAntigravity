@@ -7,6 +7,7 @@ export interface UseSpeechRecognitionOptions {
   continuous?: boolean;
   interimResults?: boolean;
   onResult?: (text: string, isFinal: boolean) => void;
+  onEnd?: () => void;
   onError?: (error: string) => void;
 }
 
@@ -22,25 +23,31 @@ export interface UseSpeechRecognitionReturn {
 }
 
 // Web Speech Recognition の型定義
-interface SpeechRecognitionEvent {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: {
-      isFinal: boolean;
-      [index: number]: {
-        transcript: string;
-      };
-    };
-  };
+export interface SpeechRecognitionResultItem {
+  transcript: string;
 }
 
-interface SpeechRecognitionErrorEvent {
+export interface SpeechRecognitionResultEntry {
+  isFinal: boolean;
+  [index: number]: SpeechRecognitionResultItem;
+}
+
+export interface SpeechRecognitionResultListLike {
+  length: number;
+  [index: number]: SpeechRecognitionResultEntry;
+}
+
+export interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: SpeechRecognitionResultListLike;
+}
+
+export interface SpeechRecognitionErrorEvent {
   error: string;
   message?: string;
 }
 
-interface SpeechRecognitionInstance {
+export interface SpeechRecognitionInstance {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -53,13 +60,56 @@ interface SpeechRecognitionInstance {
   abort: () => void;
 }
 
-interface SpeechRecognitionConstructor {
+export interface SpeechRecognitionConstructor {
   new (): SpeechRecognitionInstance;
 }
 
-interface IWindowWithSpeech extends Window {
+export interface IWindowWithSpeech extends Window {
   SpeechRecognition?: SpeechRecognitionConstructor;
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
+
+/**
+ * SpeechRecognitionの results リストから final と interim の文字列を抽出する純粋関数
+ */
+export function extractTranscriptFromResultList(results: SpeechRecognitionResultListLike): {
+  finalStr: string;
+  interimStr: string;
+} {
+  let finalStr = "";
+  let interimStr = "";
+
+  for (let i = 0; i < results.length; i++) {
+    const item = results[i];
+    const text = item[0]?.transcript || "";
+    if (item.isFinal) {
+      finalStr += text;
+    } else {
+      interimStr += text;
+    }
+  }
+
+  return { finalStr, interimStr };
+}
+
+/**
+ * 既存のベーステキストと、音声認識の最新テキスト（確定＋未確定）を結合する純粋関数
+ */
+export function combineBaseAndSpeechText(
+  baseText: string,
+  speechText: string,
+  maxChars = 2000
+): string {
+  const trimmedBase = baseText.trim();
+  const trimmedSpeech = speechText.trim();
+
+  if (!trimmedSpeech) return baseText;
+  if (!trimmedBase) return trimmedSpeech.slice(0, maxChars);
+
+  // 日本語の句読点やスペースで終わっていなければ半角スペースで区切る
+  const needsSeparator = !/[\s、。!?！？]$/.test(trimmedBase);
+  const combined = `${trimmedBase}${needsSeparator ? " " : ""}${trimmedSpeech}`;
+  return combined.slice(0, maxChars);
 }
 
 export function useSpeechRecognition(
@@ -70,6 +120,7 @@ export function useSpeechRecognition(
     continuous = false,
     interimResults = true,
     onResult,
+    onEnd,
     onError,
   } = options;
 
@@ -81,6 +132,22 @@ export function useSpeechRecognition(
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
+  // コンポーネント破棄時の安全なクリーンアップ
+  const cleanupRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+      } catch {
+        // safe
+      }
+      recognitionRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -91,17 +158,11 @@ export function useSpeechRecognition(
     setIsSupported(Boolean(SpeechRecognitionClass));
 
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch {
-          // safe
-        }
-      }
+      cleanupRecognition();
     };
-  }, []);
+  }, [cleanupRecognition]);
 
-  // 録音開始（スマホで毎回新規インスタンスを生成してエラーを防ぐ）
+  // 録音開始（毎回クリーンな新規インスタンスを生成してエラーやリークを防ぐ）
   const startListening = useCallback(async () => {
     if (typeof window === "undefined") return;
 
@@ -116,33 +177,11 @@ export function useSpeechRecognition(
 
     setErrorMessage(null);
 
-    // 既存のセッションがあれば終了
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch {
-        // safe
-      }
-      recognitionRef.current = null;
-    }
+    // 既存セッションをクリーンアップ
+    cleanupRecognition();
 
     setTranscript("");
     setInterimTranscript("");
-
-    // スマホのブラウザでマイク権限を明示的に事前要求（iOS Safari等でサイレント拒否されるのを防ぐ）
-    if (navigator.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // 権限確認完了後、認識用マイクを解放するためストリームを停止
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err: unknown) {
-        console.warn("[SpeechRecognition] Microphone permission error:", err);
-        const msg = "マイクへのアクセスが拒否されました。ブラウザまたは本体の設定でマイクを許可してください。";
-        setErrorMessage(msg);
-        onError?.(msg);
-        return;
-      }
-    }
 
     try {
       const recognition = new SpeechRecognitionClass();
@@ -156,18 +195,7 @@ export function useSpeechRecognition(
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let finalStr = "";
-        let interimStr = "";
-
-        // event.results の先頭から走査して、セッション内の確定分と未確定分を正確に分離
-        for (let i = 0; i < event.results.length; i++) {
-          const item = event.results[i];
-          if (item.isFinal) {
-            finalStr += item[0].transcript;
-          } else {
-            interimStr += item[0].transcript;
-          }
-        }
+        const { finalStr, interimStr } = extractTranscriptFromResultList(event.results);
 
         setTranscript(finalStr);
         setInterimTranscript(interimStr);
@@ -184,6 +212,7 @@ export function useSpeechRecognition(
         // no-speech（無音）や aborted（ユーザー中止）は通常の挙動なのでエラー扱いしない
         if (event.error === "no-speech" || event.error === "aborted") {
           setIsListening(false);
+          cleanupRecognition();
           return;
         }
 
@@ -202,11 +231,14 @@ export function useSpeechRecognition(
         setErrorMessage(msg);
         onError?.(msg);
         setIsListening(false);
+        cleanupRecognition();
       };
 
       recognition.onend = () => {
         setIsListening(false);
         setInterimTranscript("");
+        cleanupRecognition();
+        onEnd?.();
       };
 
       recognitionRef.current = recognition;
@@ -217,18 +249,23 @@ export function useSpeechRecognition(
       setErrorMessage(msg);
       onError?.(msg);
       setIsListening(false);
+      cleanupRecognition();
     }
-  }, [lang, continuous, interimResults, onResult, onError]);
+  }, [lang, continuous, interimResults, onResult, onEnd, onError, cleanupRecognition]);
 
   const stopListening = useCallback(() => {
-    if (!recognitionRef.current) return;
+    if (!recognitionRef.current) {
+      setIsListening(false);
+      return;
+    }
     try {
       recognitionRef.current.stop();
     } catch {
       // safe
     }
     setIsListening(false);
-  }, []);
+    cleanupRecognition();
+  }, [cleanupRecognition]);
 
   const resetTranscript = useCallback(() => {
     setTranscript("");
