@@ -15,13 +15,13 @@ export interface UseSpeechRecognitionReturn {
   isListening: boolean;
   transcript: string;
   interimTranscript: string;
-  startListening: () => void;
+  startListening: () => Promise<void>;
   stopListening: () => void;
   resetTranscript: () => void;
   errorMessage: string | null;
 }
 
-// Web Speech Recognition の簡易型定義
+// Web Speech Recognition の型定義
 interface SpeechRecognitionEvent {
   resultIndex: number;
   results: {
@@ -88,109 +88,144 @@ export function useSpeechRecognition(
     const SpeechRecognitionClass =
       win.SpeechRecognition || win.webkitSpeechRecognition;
 
+    setIsSupported(Boolean(SpeechRecognitionClass));
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // safe
+        }
+      }
+    };
+  }, []);
+
+  // 録音開始（スマホで毎回新規インスタンスを生成してエラーを防ぐ）
+  const startListening = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
+    const win = window as unknown as IWindowWithSpeech;
+    const SpeechRecognitionClass =
+      win.SpeechRecognition || win.webkitSpeechRecognition;
+
     if (!SpeechRecognitionClass) {
-      setIsSupported(false);
+      setErrorMessage("お使いのブラウザは音声入力に対応していません。");
       return;
     }
 
-    setIsSupported(true);
-    const recognition = new SpeechRecognitionClass();
-    recognition.lang = lang;
-    recognition.continuous = continuous;
-    recognition.interimResults = interimResults;
+    setErrorMessage(null);
 
-    recognition.onstart = () => {
-      setIsListening(true);
-      setErrorMessage(null);
-    };
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let currentFinal = "";
-      let currentInterim = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const item = event.results[i];
-        if (item.isFinal) {
-          currentFinal += item[0].transcript;
-        } else {
-          currentInterim += item[0].transcript;
-        }
+    // 既存のセッションがあれば終了
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {
+        // safe
       }
+      recognitionRef.current = null;
+    }
 
-      if (currentFinal) {
-        setTranscript((prev) => {
-          const next = prev ? `${prev} ${currentFinal}` : currentFinal;
-          onResult?.(next, true);
-          return next;
-        });
-        setInterimTranscript("");
-      } else if (currentInterim) {
-        setInterimTranscript(currentInterim);
-        onResult?.(currentInterim, false);
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      // no-speech は単に音声が検出されなかっただけなので致命的エラーではない
-      if (event.error === "no-speech") {
-        setIsListening(false);
+    // スマホのブラウザでマイク権限を明示的に事前要求（iOS Safari等でサイレント拒否されるのを防ぐ）
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // 権限確認完了後、認識用マイクを解放するためストリームを停止
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err: unknown) {
+        console.warn("[SpeechRecognition] Microphone permission error:", err);
+        const msg = "マイクへのアクセスが拒否されました。ブラウザまたは本体の設定でマイクを許可してください。";
+        setErrorMessage(msg);
+        onError?.(msg);
         return;
       }
-
-      console.warn("[SpeechRecognition] Error:", event.error);
-      let message = "音声認識でエラーが発生しました。";
-      if (event.error === "not-allowed") {
-        message = "マイクへのアクセスが拒否されました。ブラウザの設定でマイクを許可してください。";
-      } else if (event.error === "network") {
-        message = "音声認識のためのネットワーク通信に失敗しました。";
-      }
-
-      setErrorMessage(message);
-      onError?.(message);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      setInterimTranscript("");
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      try {
-        recognition.abort();
-      } catch {
-        // cleanup safe
-      }
-    };
-  }, [lang, continuous, interimResults, onResult, onError]);
-
-  const startListening = useCallback(() => {
-    if (!recognitionRef.current) return;
-    setErrorMessage(null);
-    try {
-      recognitionRef.current.start();
-    } catch {
-      // すでに開始されている場合は一度止めて再開
-      try {
-        recognitionRef.current.stop();
-        setTimeout(() => {
-          recognitionRef.current?.start();
-        }, 100);
-      } catch {
-        // ignore
-      }
     }
-  }, []);
+
+    try {
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = lang;
+      recognition.continuous = continuous;
+      recognition.interimResults = interimResults;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setErrorMessage(null);
+      };
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let currentFinal = "";
+        let currentInterim = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            currentFinal += item[0].transcript;
+          } else {
+            currentInterim += item[0].transcript;
+          }
+        }
+
+        if (currentFinal) {
+          setTranscript((prev) => {
+            const next = prev ? `${prev} ${currentFinal}` : currentFinal;
+            onResult?.(next, true);
+            return next;
+          });
+          setInterimTranscript("");
+        } else if (currentInterim) {
+          setInterimTranscript(currentInterim);
+          onResult?.(currentInterim, false);
+        }
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        // no-speech（無音）や aborted（ユーザー中止）は通常の挙動なのでエラー扱いしない
+        if (event.error === "no-speech" || event.error === "aborted") {
+          setIsListening(false);
+          return;
+        }
+
+        console.warn("[SpeechRecognition] Error event:", event.error);
+        let msg = "音声認識でエラーが発生しました。";
+        if (event.error === "not-allowed") {
+          msg = "マイクの使用が許可されていません。ブラウザの設定でマイクを許可してください。";
+        } else if (event.error === "service-not-allowed") {
+          msg = "端末の音声入力が無効になっています。iPhoneの「設定」>「一般」>「キーボード」で「音声入力を有効にする」がONになっているかご確認ください。";
+        } else if (event.error === "network") {
+          msg = "音声認識の通信に失敗しました。電波環境の良い場所でお試しください。";
+        } else if (event.error === "audio-capture") {
+          msg = "マイクが検出されませんでした。別のアプリがマイクを使用していないかご確認ください。";
+        }
+
+        setErrorMessage(msg);
+        onError?.(msg);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setInterimTranscript("");
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: unknown) {
+      console.error("[SpeechRecognition] Failed to start:", err);
+      const msg = "音声認識の開始に失敗しました。もう一度お試しください。";
+      setErrorMessage(msg);
+      onError?.(msg);
+      setIsListening(false);
+    }
+  }, [lang, continuous, interimResults, onResult, onError]);
 
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return;
     try {
       recognitionRef.current.stop();
     } catch {
-      // ignore
+      // safe
     }
+    setIsListening(false);
   }, []);
 
   const resetTranscript = useCallback(() => {
