@@ -17,6 +17,7 @@ export interface UseSpeechSynthesisReturn {
   cancel: () => void;
   pause: () => void;
   resume: () => void;
+  unlockAudio: () => void;
 }
 
 /**
@@ -90,6 +91,51 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
   const optionsRef = useRef<SpeechSynthesisOptions>({ rate: 1.0, pitch: 1.0, volume: 1.0 });
   const resumeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 無音WAVデータURI（スマホのAutoplay制限解除用）
+  const SILENT_AUDIO_URI =
+    "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
+  // スマホのブラウザ自動再生制限を解除するアンロック処理（ユーザー操作時に呼ぶ）
+  const unlockAudio = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      if (!audioRef.current && typeof Audio !== "undefined") {
+        audioRef.current = new Audio();
+      }
+      if (audioRef.current) {
+        audioRef.current.src = SILENT_AUDIO_URI;
+        audioRef.current.volume = 0.01;
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.volume = optionsRef.current.volume ?? 1.0;
+              }
+            })
+            .catch(() => {
+              // ignore
+            });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // Web Speech APIの事前アンロック（ユーザー操作コンテキストでの初回呼び出し許可）
+    if ("speechSynthesis" in window) {
+      try {
+        const dummy = new SpeechSynthesisUtterance("");
+        dummy.volume = 0;
+        window.speechSynthesis.speak(dummy);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const cleanupAudio = () => {
     if (audioRef.current) {
       try {
@@ -100,7 +146,7 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
       } catch {
         // safe
       }
-      audioRef.current = null;
+      // audioRef.current は null にせずアンロック済みインスタンスを再利用
     }
   };
 
@@ -271,8 +317,13 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
         if (res.ok) {
           const blob = await res.blob();
           const audioUrl = URL.createObjectURL(blob);
-          const audio = new Audio(audioUrl);
-          audioRef.current = audio;
+
+          if (!audioRef.current && typeof Audio !== "undefined") {
+            audioRef.current = new Audio();
+          }
+          const audio = audioRef.current!;
+          audio.src = audioUrl;
+          audio.volume = options?.volume ?? 1.0;
 
           let hasEnded = false;
 
@@ -352,5 +403,6 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
     cancel,
     pause,
     resume,
+    unlockAudio,
   };
 }

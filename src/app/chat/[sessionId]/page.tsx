@@ -34,13 +34,17 @@ export default function ChatPage({ params }: ChatPageProps) {
     speakingId,
     speak,
     cancel,
+    unlockAudio,
   } = useSpeechSynthesis();
 
   // 音声モードのトグル（常に初期状態はOFF。ユーザーがクリックしたときのみON/OFF切り替え）
   const handleToggleVoiceMode = () => {
     setIsVoiceMode((prev) => {
       const next = !prev;
-      if (!next) {
+      if (next) {
+        // ONに切り替えた瞬間にスマホのブラウザ自動再生制限をアンロック
+        unlockAudio();
+      } else {
         cancel();
       }
       return next;
@@ -110,6 +114,12 @@ export default function ChatPage({ params }: ChatPageProps) {
   // メッセージ送信
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
+
+    // 音声モードがONの場合、ユーザーがボタンを押したこの瞬間（ユーザー操作コンテキスト内）に
+    // スマホのメディア自動再生制限をアンロックしておく
+    if (isVoiceMode) {
+      unlockAudio();
+    }
 
     // 新規発言時は進行中の読み上げを中断
     cancel();
