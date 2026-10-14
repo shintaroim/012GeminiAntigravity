@@ -123,17 +123,6 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
     } catch {
       // ignore
     }
-
-    // Web Speech APIの事前アンロック（ユーザー操作コンテキストでの初回呼び出し許可）
-    if ("speechSynthesis" in window) {
-      try {
-        const dummy = new SpeechSynthesisUtterance("");
-        dummy.volume = 0;
-        window.speechSynthesis.speak(dummy);
-      } catch {
-        // ignore
-      }
-    }
   }, []);
 
   const cleanupAudio = () => {

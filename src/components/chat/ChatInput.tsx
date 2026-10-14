@@ -132,7 +132,13 @@ export function ChatInput({
               ref={textareaRef}
               rows={1}
               value={text}
-              onChange={(e) => setText(e.target.value.slice(0, maxChars))}
+              onChange={(e) => {
+                const val = e.target.value.slice(0, maxChars);
+                setText(val);
+                if (!isListening) {
+                  baseTextRef.current = val;
+                }
+              }}
               onKeyDown={handleKeyDown}
               placeholder="思い出したことや、感じていることを入力..."
               disabled={isLoading || disabled}
@@ -178,9 +184,23 @@ export function ChatInput({
         </form>
 
         {isListening && (
-          <div className="flex items-center justify-center gap-1.5 text-xs text-red-600 font-medium animate-pulse py-0.5">
-            <span className="w-2 h-2 rounded-full bg-red-500"></span>
-            声を聞き取っています...話し終えたら送信またはマイクをタップ
+          <div className="flex items-center justify-between gap-2 text-xs text-brand-800 bg-brand-50/90 border border-brand-200/90 rounded-xl py-1.5 px-3 shadow-xs">
+            <div className="flex items-center gap-2 truncate flex-1 mr-2">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+              </span>
+              <span className="font-medium text-[11px] sm:text-xs truncate text-brand-700">
+                {interimTranscript ? `「${interimTranscript}」` : "音声を聞き取り中...（連続でお話しいただけます）"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={stopListening}
+              className="shrink-0 text-[11px] text-red-600 font-bold px-2.5 py-1 rounded-md bg-white border border-red-200 hover:bg-red-50 active:scale-95 transition-all shadow-xs"
+            >
+              完了
+            </button>
           </div>
         )}
 
