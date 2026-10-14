@@ -82,12 +82,12 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t border-brand-200/80 bg-white/95 backdrop-blur-md px-4 py-3 sticky bottom-0 z-20">
+    <div className="border-t border-brand-200/80 bg-white/95 backdrop-blur-md px-3 sm:px-4 py-2.5 sm:py-3 sticky bottom-0 z-20 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div className="max-w-3xl mx-auto space-y-2">
         {/* クイックアクションチップ */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs -mx-1 px-1 scrollbar-none">
           <span className="text-brand-500 flex items-center gap-1 text-[11px] shrink-0 font-medium">
-            <Sparkles className="w-3 h-3" />
+            <Sparkles className="w-3.5 h-3.5" />
             ショートカット:
           </span>
           {QUICK_ACTIONS.map((action) => (
@@ -96,7 +96,7 @@ export function ChatInput({
               type="button"
               onClick={() => handleQuickCommand(action.command)}
               disabled={isLoading || disabled}
-              className="shrink-0 px-2.5 py-1 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200/80 text-[11px] transition-colors disabled:opacity-50"
+              className="shrink-0 px-3 py-1.5 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200/80 text-xs transition-colors disabled:opacity-50 active:scale-95 touch-manipulation"
             >
               {action.label}
             </button>
@@ -114,46 +114,51 @@ export function ChatInput({
               onKeyDown={handleKeyDown}
               placeholder="思い出したことや、感じていることを入力..."
               disabled={isLoading || disabled}
-              className="w-full resize-none rounded-xl border border-brand-300 bg-brand-50/50 px-4 py-3 text-sm text-brand-950 placeholder-brand-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-600 disabled:opacity-50 transition-all max-h-44"
+              className="w-full resize-none rounded-2xl border border-brand-300 bg-brand-50/50 px-3.5 sm:px-4 py-3 text-base sm:text-sm text-brand-950 placeholder-brand-400 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-600/30 disabled:opacity-50 transition-all max-h-44 min-h-[48px] leading-relaxed"
             />
             {text.length > 0 && (
-              <div className="absolute right-3 bottom-2 text-[10px] text-brand-400">
+              <div className="absolute right-3 bottom-2 text-[10px] text-brand-400 bg-white/80 px-1 rounded pointer-events-none">
                 {text.length}/{maxChars}
               </div>
             )}
           </div>
 
-          {/* 音声入力（マイク）ボタン */}
+          {/* 音声入力（マイク）ボタン（スマホで親指タップしやすい48px設計） */}
           {isSpeechSupported && (
             <button
               type="button"
               onClick={isListening ? stopListening : startListening}
               disabled={isLoading || disabled}
-              className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-all border ${
+              className={`h-12 w-12 sm:h-11 sm:w-11 rounded-2xl flex items-center justify-center shrink-0 transition-all border active:scale-95 touch-manipulation shadow-xs ${
                 isListening
-                  ? "bg-red-500 border-red-600 text-white animate-pulse shadow-md"
-                  : "bg-brand-50 border-brand-200/90 text-brand-700 hover:bg-brand-100 hover:text-brand-900"
+                  ? "bg-red-500 border-red-600 text-white animate-pulse shadow-md ring-2 ring-red-300"
+                  : "bg-brand-50 border-brand-200/90 text-brand-700 hover:bg-brand-100 hover:text-brand-900 active:bg-brand-200"
               } disabled:opacity-40`}
               title={isListening ? "音声入力を停止" : "音声で話しかける（マイク入力）"}
             >
-              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isListening ? <MicOff className="w-5 h-5 sm:w-4.5 sm:h-4.5" /> : <Mic className="w-5 h-5 sm:w-4.5 sm:h-4.5" />}
             </button>
           )}
 
+          {/* 送信ボタン（文字があるときは押しやすいアクセント色・48px設計） */}
           <button
             type="submit"
             disabled={!text.trim() || isLoading || disabled}
-            className="h-11 w-11 rounded-xl bg-brand-900 text-brand-50 hover:bg-brand-950 flex items-center justify-center shrink-0 shadow-sm transition-colors disabled:opacity-40 disabled:hover:bg-brand-900"
+            className={`h-12 w-12 sm:h-11 sm:w-11 rounded-2xl flex items-center justify-center shrink-0 transition-all border touch-manipulation active:scale-95 ${
+              text.trim()
+                ? "bg-brand-900 hover:bg-brand-950 border-brand-950 text-white shadow-md ring-2 ring-brand-800/30 cursor-pointer"
+                : "bg-brand-200/60 border-brand-200 text-brand-400 cursor-not-allowed opacity-40"
+            }`}
             title="送信（Enter）"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-5 h-5 sm:w-4.5 sm:h-4.5" />
           </button>
         </form>
 
         {isListening && (
-          <div className="flex items-center justify-center gap-1.5 text-xs text-red-600 font-medium animate-pulse">
+          <div className="flex items-center justify-center gap-1.5 text-xs text-red-600 font-medium animate-pulse py-0.5">
             <span className="w-2 h-2 rounded-full bg-red-500"></span>
-            声を聞き取っています...話し終えたら送信またはマイクをタップしてください
+            声を聞き取っています...話し終えたら送信またはマイクをタップ
           </div>
         )}
 

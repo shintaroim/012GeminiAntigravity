@@ -41,29 +41,29 @@ export function ChatHeader({
   const phaseInfo = PHASE_LABELS[phase] || PHASE_LABELS.speak;
 
   return (
-    <header className="sticky top-0 z-20 w-full bg-white/90 backdrop-blur-md border-b border-brand-200/80 px-4 py-3 flex items-center justify-between">
-      <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-20 w-full bg-white/95 backdrop-blur-md border-b border-brand-200/80 px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <a
           href="/"
-          className="p-1.5 text-brand-700 hover:text-brand-950 hover:bg-brand-100 rounded-lg transition-colors"
+          className="p-2 text-brand-700 hover:text-brand-950 hover:bg-brand-100 rounded-xl transition-colors shrink-0"
           title="トップに戻る"
         >
           <ArrowLeft className="w-5 h-5" />
         </a>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="font-serif font-bold text-base text-brand-950">HON-NEo</h1>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-100 text-brand-800 font-medium">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <h1 className="font-serif font-bold text-sm sm:text-base text-brand-950 truncate">HON-NEo</h1>
+            <span className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full bg-brand-100 text-brand-800 font-medium shrink-0">
               {phaseInfo.title}
             </span>
           </div>
-          <p className="text-[11px] text-brand-600">
+          <p className="text-[10px] sm:text-[11px] text-brand-600 truncate">
             {phaseInfo.desc} • ターン {turnCount}
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
         {onToggleVoiceMode && (
           <VoiceModeToggle
             enabled={isVoiceMode}
