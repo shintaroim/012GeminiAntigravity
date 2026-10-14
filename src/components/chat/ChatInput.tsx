@@ -191,7 +191,7 @@ export function ChatInput({
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
               </span>
               <span className="font-medium text-[11px] sm:text-xs truncate text-brand-700">
-                {interimTranscript ? `「${interimTranscript}」` : "音声を聞き取り中...（連続でお話しいただけます）"}
+                {interimTranscript ? `「${interimTranscript}」` : "音声を聞き取り中..."}
               </span>
             </div>
             <button

@@ -85,40 +85,27 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const queueRef = useRef<string[]>([]);
   const currentIdRef = useRef<string | null>(null);
   const optionsRef = useRef<SpeechSynthesisOptions>({ rate: 1.0, pitch: 1.0, volume: 1.0 });
   const resumeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 無音WAVデータURI（スマホのAutoplay制限解除用）
-  const SILENT_AUDIO_URI =
-    "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-
   // スマホのブラウザ自動再生制限を解除するアンロック処理（ユーザー操作時に呼ぶ）
   const unlockAudio = useCallback(() => {
     if (typeof window === "undefined") return;
 
     try {
-      if (!audioRef.current && typeof Audio !== "undefined") {
-        audioRef.current = new Audio();
-      }
-      if (audioRef.current) {
-        audioRef.current.src = SILENT_AUDIO_URI;
-        audioRef.current.volume = 0.01;
-        const playPromise = audioRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current.volume = optionsRef.current.volume ?? 1.0;
-              }
-            })
-            .catch(() => {
-              // ignore
-            });
-        }
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextClass) {
+        const dummyCtx = new AudioContextClass();
+        dummyCtx.resume().then(() => {
+          dummyCtx.close();
+        });
       }
     } catch {
       // ignore
@@ -126,6 +113,26 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
   }, []);
 
   const cleanupAudio = () => {
+    if (audioSourceRef.current) {
+      try {
+        audioSourceRef.current.onended = null;
+        audioSourceRef.current.stop();
+        audioSourceRef.current.disconnect();
+      } catch {
+        // safe
+      }
+      audioSourceRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try {
+        if (audioContextRef.current.state !== "closed") {
+          audioContextRef.current.close();
+        }
+      } catch {
+        // safe
+      }
+      audioContextRef.current = null;
+    }
     if (audioRef.current) {
       try {
         audioRef.current.onended = null;
@@ -135,7 +142,6 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
       } catch {
         // safe
       }
-      // audioRef.current は null にせずアンロック済みインスタンスを再利用
     }
   };
 
@@ -304,7 +310,54 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
         });
 
         if (res.ok) {
-          const blob = await res.blob();
+          const arrayBuffer = await res.arrayBuffer();
+
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
+          if (AudioContextClass) {
+            try {
+              cleanupAudio();
+              const ctx = new AudioContextClass();
+              audioContextRef.current = ctx;
+
+              if (ctx.state === "suspended") {
+                await ctx.resume();
+              }
+
+              const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+                ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+              });
+
+              const source = ctx.createBufferSource();
+              source.buffer = audioBuffer;
+
+              const gainNode = ctx.createGain();
+              gainNode.gain.value = options?.volume ?? 1.0;
+
+              source.connect(gainNode);
+              gainNode.connect(ctx.destination);
+
+              let hasEnded = false;
+              source.onended = () => {
+                if (hasEnded) return;
+                hasEnded = true;
+                cleanupAudio();
+                handleFinished();
+              };
+
+              audioSourceRef.current = source;
+              source.start(0);
+              return;
+            } catch (webAudioErr) {
+              console.warn("[TTS] Web Audio API decode/playback failed, trying fallback:", webAudioErr);
+              cleanupAudio();
+            }
+          }
+
+          // フォールバック: HTMLAudioElement
+          const blob = new Blob([arrayBuffer], { type: "audio/mp3" });
           const audioUrl = URL.createObjectURL(blob);
 
           if (!audioRef.current && typeof Audio !== "undefined") {
