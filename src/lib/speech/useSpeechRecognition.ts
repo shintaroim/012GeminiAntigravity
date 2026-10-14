@@ -117,7 +117,7 @@ export function useSpeechRecognition(
 ): UseSpeechRecognitionReturn {
   const {
     lang = "ja-JP",
-    continuous = false,
+    continuous = true,
     interimResults = true,
     onResult,
     onEnd,
