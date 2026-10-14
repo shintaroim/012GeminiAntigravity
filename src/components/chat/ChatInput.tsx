@@ -27,21 +27,52 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const maxChars = 2000;
 
+  const baseTextRef = useRef<string>("");
+
   const {
     isSupported: isSpeechSupported,
     isListening,
+    transcript,
+    interimTranscript,
     startListening,
     stopListening,
     errorMessage: speechError,
-  } = useSpeechRecognition({
-    onResult: (spokenText) => {
-      setText((prev) => {
-        const trimmed = prev.trim();
-        const next = trimmed ? `${trimmed} ${spokenText}` : spokenText;
-        return next.slice(0, maxChars);
-      });
-    },
-  });
+  } = useSpeechRecognition();
+
+  // 音声認識中：ベーステキスト + 認識テキスト（確定分＋未確定分）を安全に合成（重複を完全に防止）
+  useEffect(() => {
+    if (!isListening) return;
+
+    const speechPart = [transcript, interimTranscript].filter(Boolean).join("");
+    if (!speechPart) return;
+
+    const base = baseTextRef.current;
+    let combined = "";
+    if (base) {
+      const needsSeparator = !/[\s、。!?！？]$/.test(base);
+      combined = `${base}${needsSeparator ? " " : ""}${speechPart}`;
+    } else {
+      combined = speechPart;
+    }
+
+    setText(combined.slice(0, maxChars));
+  }, [transcript, interimTranscript, isListening, maxChars]);
+
+  // 音声入力終了時にベーステキストをクリア
+  useEffect(() => {
+    if (!isListening) {
+      baseTextRef.current = "";
+    }
+  }, [isListening]);
+
+  const handleToggleSpeech = async () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      baseTextRef.current = text.trim();
+      await startListening();
+    }
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -127,7 +158,7 @@ export function ChatInput({
           {isSpeechSupported && (
             <button
               type="button"
-              onClick={isListening ? stopListening : startListening}
+              onClick={handleToggleSpeech}
               disabled={isLoading || disabled}
               className={`h-12 w-12 sm:h-11 sm:w-11 rounded-2xl flex items-center justify-center shrink-0 transition-all border active:scale-95 touch-manipulation shadow-xs ${
                 isListening

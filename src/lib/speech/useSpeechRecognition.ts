@@ -126,6 +126,9 @@ export function useSpeechRecognition(
       recognitionRef.current = null;
     }
 
+    setTranscript("");
+    setInterimTranscript("");
+
     // スマホのブラウザでマイク権限を明示的に事前要求（iOS Safari等でサイレント拒否されるのを防ぐ）
     if (navigator.mediaDevices?.getUserMedia) {
       try {
@@ -153,28 +156,27 @@ export function useSpeechRecognition(
       };
 
       recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let currentFinal = "";
-        let currentInterim = "";
+        let finalStr = "";
+        let interimStr = "";
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        // event.results の先頭から走査して、セッション内の確定分と未確定分を正確に分離
+        for (let i = 0; i < event.results.length; i++) {
           const item = event.results[i];
           if (item.isFinal) {
-            currentFinal += item[0].transcript;
+            finalStr += item[0].transcript;
           } else {
-            currentInterim += item[0].transcript;
+            interimStr += item[0].transcript;
           }
         }
 
-        if (currentFinal) {
-          setTranscript((prev) => {
-            const next = prev ? `${prev} ${currentFinal}` : currentFinal;
-            onResult?.(next, true);
-            return next;
-          });
-          setInterimTranscript("");
-        } else if (currentInterim) {
-          setInterimTranscript(currentInterim);
-          onResult?.(currentInterim, false);
+        setTranscript(finalStr);
+        setInterimTranscript(interimStr);
+
+        // 呼び出し元のコールバック通知（確定分優先、なければ未確定分）
+        if (finalStr) {
+          onResult?.(finalStr, true);
+        } else if (interimStr) {
+          onResult?.(interimStr, false);
         }
       };
 
